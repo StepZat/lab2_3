@@ -72,10 +72,9 @@ class MainActivity : AppCompatActivity() {
         setContent {
             MaterialTheme {
                 Surface {
-                    //val hashTable = HashTable<Int, Vector>()
-                    // Начальное значение типа вектора, можно изменять по ходу выполнения
-                    val vectorType = PolarVectorType()  // Начинаем с полярного типа, например
-                    VectorManagementApp(viewModelVector.hashTable, vectorType, viewModelVector, ::launchFilePicker)
+                    VectorFactory.registerType("Polar", PolarVectorType())
+                    VectorFactory.registerType("Cartesian", CartesianVectorType())
+                    VectorManagementApp(viewModelVector.hashTable, VectorFactory, viewModelVector, ::launchFilePicker)
                 }
             }
         }
@@ -105,15 +104,13 @@ class MainActivity : AppCompatActivity() {
         val inputStream = context.contentResolver.openInputStream(uri)
         inputStream?.bufferedReader().use { reader ->
             reader?.lineSequence()?.drop(1)?.forEach { line ->
-                println("CSV Line: $line")// Skip header
                 val (key, valueRepresentation) = line.split(";")
                 val vector = parseVector(valueRepresentation)
                 hashTable.put(key.toInt(), vector)
                 println("Added vector: $vector with key $key")
             }
         }
-        // Notify your UI or ViewModel to refresh views
-        // e.g., viewModel.refreshUI()
+
         println("Import completed, hashTable size: ${hashTable.size}")
         viewModelVector.dataLoaded.value = true
     }
@@ -185,7 +182,7 @@ fun CustomTextField(value: String, onValueChange: (String) -> Unit, label: Strin
 fun VectorManagementApp(
     //hashTable: HashTable<Int, Vector>,
     hashTable: MutableState<HashTable<Int, Vector>>,
-    vectorFactory: VectorType,
+    vectorFactory: VectorFactory,
     viewModel: VectorViewModel,
     launchFilePicker: () -> Unit,
     context: Context = LocalContext.current) {
@@ -194,6 +191,9 @@ fun VectorManagementApp(
     var keyInput by remember { mutableStateOf("") }
     var valuePartOneInput by remember { mutableStateOf("") }
     var valuePartTwoInput by remember { mutableStateOf("") }
+    var keyInputError by remember { mutableStateOf("") }
+    var valuePartOneError by remember { mutableStateOf("") }
+    var valuePartTwoError by remember { mutableStateOf("") }
     var refreshUI by remember { mutableStateOf(false) }
     val dataLoaded = viewModel.dataLoaded.value
 
@@ -222,34 +222,52 @@ fun VectorManagementApp(
             }
             Button(onClick = {
                 launchFilePicker()
-                println("viewModelSize = " + viewModel.hashTable.value.size)
-                //println("size = " + hashTable.size)
                 refreshUI = !refreshUI
             }
             ) {
                 Text("Import")
             }
         }
-        //DropdownMenuComponent(items = vectorTypes, selectedItem = selectedVectorType) {
-        //    selectedVectorType = it
-        //    valuePartOneInput = ""
-        //    valuePartTwoInput = ""
-        //}
+
 
         CustomTextField(value = viewModel.keyInput.value, onValueChange = { viewModel.keyInput.value = it }, label = "Key")
+        if (keyInputError.isNotEmpty()) {
+            Text(keyInputError, color = Color.Red, style = MaterialTheme.typography.body2)
+        }
         CustomTextField(value = valuePartOneInput, onValueChange = { valuePartOneInput = it }, label = if (selectedVectorType == "Polar") "Length" else "X")
+        if (valuePartOneError.isNotEmpty()) {
+            Text(valuePartOneError, color = Color.Red, style = MaterialTheme.typography.body2)
+        }
         CustomTextField(value = valuePartTwoInput, onValueChange = { valuePartTwoInput = it }, label = if (selectedVectorType == "Polar") "Angle" else "Y")
+        if (valuePartTwoError.isNotEmpty()) {
+            Text(valuePartTwoError, color = Color.Red, style = MaterialTheme.typography.body2)
+        }
 
         Row {
             Button(onClick = {
                 val keyInt = viewModel.keyInput.value.toIntOrNull()
-                if (keyInt != null && valuePartOneInput.isNotEmpty() && valuePartTwoInput.isNotEmpty()) {
-                    val vector = if (selectedVectorType == "Polar") {
-                        PolarVector(valuePartOneInput.toDouble(), valuePartTwoInput.toDouble())
-                    } else {
-                        CartesianVector(valuePartOneInput.toDouble(), valuePartTwoInput.toDouble())
+                val valuePartOneDouble = valuePartOneInput.toDoubleOrNull()
+                val valuePartTwoDouble = valuePartTwoInput.toDoubleOrNull()
+                keyInputError = ""
+                valuePartOneError = ""
+                valuePartTwoError = ""
+
+                if (keyInt == null) {
+                    keyInputError = "Key must be a number"
+                }
+                if (valuePartOneDouble == null) {
+                    valuePartOneError = "Value must be a number"
+                }
+                if (valuePartTwoDouble == null) {
+                    valuePartTwoError = "Value must be a number"
+                }
+                if (keyInputError.isEmpty() && valuePartOneError.isEmpty() && valuePartTwoError.isEmpty()) {
+                    val vector = vectorFactory.createVector(selectedVectorType)
+                    when (vector) {
+                        is PolarVector -> viewModel.hashTable.value.put(keyInt!!, PolarVector(valuePartOneDouble!!, valuePartTwoDouble!!))
+                        is CartesianVector -> viewModel.hashTable.value.put(keyInt!!, CartesianVector(valuePartOneDouble!!, valuePartTwoDouble!!))
                     }
-                    viewModel.hashTable.value.put(keyInt, vector)
+                    print(vector.keyRepresentation)
                     viewModel.keyInput.value = ""
                     valuePartOneInput = ""
                     valuePartTwoInput = ""
@@ -257,9 +275,15 @@ fun VectorManagementApp(
             }) {
                 Text("Add")
             }
+
             Spacer(modifier = Modifier.width(8.dp))
+
             Button(onClick = {
                 val keyInt = viewModel.keyInput.value.toIntOrNull()
+                keyInputError = ""
+                if (keyInt == null) {
+                    keyInputError = "Key must be a number"
+                }
                 if (keyInt != null) {
                     viewModel.hashTable.value.remove(keyInt)
                     refreshUI = !refreshUI
@@ -268,14 +292,18 @@ fun VectorManagementApp(
             }) {
                 Text("Delete")
             }
+
             Spacer(modifier = Modifier.width(8.dp))
+
             Button(onClick = {
                 viewModel.hashTable.value.clear()
                 refreshUI = !refreshUI  // Обновляем UI после очистки таблицы
             }) {
                 Text("Clear")
             }
+
             Spacer(modifier = Modifier.width(8.dp))
+
             Button(onClick = {
                 viewModel.performSearch(viewModel.hashTable.value)
             }) {
@@ -290,7 +318,7 @@ fun VectorManagementApp(
                 Text("Element not found", style = MaterialTheme.typography.h6)
             }
         } else {
-            TableDisplay(viewModel.hashTable.value, refreshUI)  // refreshUI может управляться через ViewModel, если это необходимо
+            TableDisplay(viewModel.hashTable.value, refreshUI)
         }
     }
 }

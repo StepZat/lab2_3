@@ -4,7 +4,7 @@ class HashTable<K, V> where V : Vector {
     private var initCapacity = 5
     private var numBuckets = initCapacity
     private var buckets: Array<MutableList<HashNode<K, V>>> = Array(numBuckets) { arrayListOf() }
-    var onRehash: () -> Unit = {}
+
 
     fun getBucketIndex(key: K): Int = key.hashCode() % numBuckets
 
@@ -34,13 +34,10 @@ class HashTable<K, V> where V : Vector {
         return if (nodeIndex != -1) bucket.removeAt(nodeIndex).value else null
     }
 
-    //fun clear() {
-    //    buckets.forEach { it.clear() }
-    //}
     fun clear() {
-        println("Очищаем таблицу")
-        buckets = Array(numBuckets) { arrayListOf() }  // Пересоздаем массив корзин
+        buckets = Array(numBuckets) { arrayListOf() }
     }
+
     private fun rehash() {
         val oldBuckets = buckets
         numBuckets *= 2
@@ -51,15 +48,11 @@ class HashTable<K, V> where V : Vector {
     val size: Int
         get() = buckets.sumOf { it.size }
 
-    //fun getBucketData(): List<HashNode<K, V>> {
-    //    return buckets.flatMap { it }
-    //}
 
-    // В классе HashTable
     fun getBucketData(): List<Pair<Int, List<HashNode<K, V>>>> {
         return buckets.mapIndexed { index, bucket ->
-            index to bucket.toList() // Преобразуем MutableList в List
-        }.filter { it.second.isNotEmpty() } // Опционально: фильтруем пустые корзины
+            index to bucket.toList()
+        }.filter { it.second.isNotEmpty() }
     }
 
 

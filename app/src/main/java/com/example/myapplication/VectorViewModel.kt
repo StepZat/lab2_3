@@ -30,3 +30,4 @@ class VectorViewModel : ViewModel() {
         isSearching.value = true
     }
 }
+
